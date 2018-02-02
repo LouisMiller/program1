@@ -19,6 +19,12 @@
 * responses are just lines of text (in a very particular format). 
 *
 **/
+/*
+Louis Miller
+CS371 Program1
+02 February 2018
+*/ 
+
 
 import java.net.Socket;
 import java.lang.Runnable;
@@ -26,12 +32,14 @@ import java.io.*;
 import java.util.Date;
 import java.text.DateFormat;
 import java.util.TimeZone;
-
 public class WebWorker implements Runnable
 {
 
 private Socket socket;
-
+private String arr[];
+//array of Strings to hold the path for get request
+private int errCode = 200;
+//int variable to hold error code in case incorrect file path entered
 /**
 * Constructor: must have a valid open socket
 **/
@@ -53,8 +61,7 @@ public void run()
       InputStream  is = socket.getInputStream();
       OutputStream os = socket.getOutputStream();
       readHTTPRequest(is);
-      writeHTTPHeader(os,"text/html");
-      writeContent(os);
+      readFile(os, is);
       os.flush();
       socket.close();
    } catch (Exception e) {
@@ -69,12 +76,19 @@ public void run()
 **/
 private void readHTTPRequest(InputStream is)
 {
+   boolean b = true;
    String line;
    BufferedReader r = new BufferedReader(new InputStreamReader(is));
    while (true) {
       try {
-         while (!r.ready()) Thread.sleep(1);
+         while (!r.ready()) Thread.sleep(1);		
          line = r.readLine();
+//split Get request line to store file path in arr[1]
+	 if(b){
+		arr = line.split("\\s");
+		b = false;
+	 }
+	 	System.err.println("arr = " + arr[1]);
          System.err.println("Request line: ("+line+")");
          if (line.length()==0) break;
       } catch (Exception e) {
@@ -95,7 +109,11 @@ private void writeHTTPHeader(OutputStream os, String contentType) throws Excepti
    Date d = new Date();
    DateFormat df = DateFormat.getDateTimeInstance();
    df.setTimeZone(TimeZone.getTimeZone("GMT"));
-   os.write("HTTP/1.1 200 OK\n".getBytes());
+//check errCode in case invalid file path given
+   if(errCode == 404)
+	   os.write("HTTP/1.1 404 FILE NOT FOUND\n".getBytes());
+   else
+	   os.write("HTTP/1.1 200 OK\n".getBytes());
    os.write("Date: ".getBytes());
    os.write((df.format(d)).getBytes());
    os.write("\n".getBytes());
@@ -110,15 +128,55 @@ private void writeHTTPHeader(OutputStream os, String contentType) throws Excepti
 }
 
 /**
+
 * Write the data content to the client network connection. This MUST
 * be done after the HTTP header has been written out.
 * @param os is the OutputStream object to write to
 **/
-private void writeContent(OutputStream os) throws Exception
+//write content from html file
+private void writeContent(OutputStream os, String content) throws Exception
 {
-   os.write("<html><head></head><body>\n".getBytes());
-   os.write("<h3>My web server works!</h3>\n".getBytes());
-   os.write("</body></html>\n".getBytes());
+	os.write(content.getBytes());
+}
+
+private void readFile(OutputStream os, InputStream is) throws Exception{
+	StringBuilder tags = new StringBuilder();
+	String input;
+	String content;
+//create buffered reader to read html file at given path and replace tags
+	try {
+		BufferedReader read = new BufferedReader(new FileReader("." + arr[1]));
+		writeHTTPHeader(os, "text/html");
+		while ((input = read.readLine()) != null) {
+			if (input.contains("<cs371date>")) {
+				Date d = new Date();
+				DateFormat df = DateFormat.getDateTimeInstance();
+				df.setTimeZone(TimeZone.getTimeZone("GMT"));
+				tags.append(input + " \n" + df.format(d));
+			}
+			else if(input.contains("<cs371server")) {
+				tags.append(input + "\n<p> Louis' Web Server</p>");
+			}
+			else {
+				tags.append(input);
+			}
+		}
+		read.close();
+	}
+//set error code to 404 if file is not found
+	catch (IOException e) {
+		System.err.println("File not found");
+		error(os,is);
+	}
+	content = tags.toString();
+	writeContent(os, content);
+}
+//set error code to 404
+private void error(OutputStream os, InputStream is) throws Exception
+{
+	arr[1] = "/error.html";
+	errCode = 404;
+	readFile(os,is);
 }
 
 } // end class
